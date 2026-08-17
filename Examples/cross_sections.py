@@ -62,11 +62,11 @@ axs[1].set_yscale('log')
 axs[2].set_yscale('log')
 
 axs[0].set_xlabel(r'$\omega/\omega_{p1}$')
-axs[0].set_xlabel(r'$\omega/\omega_{p1}$')
-axs[0].set_xlabel(r'$\omega/\omega_{p1}$')
+axs[1].set_xlabel(r'$\omega/\omega_{p1}$')
+axs[2].set_xlabel(r'$\omega/\omega_{p1}$')
 
 axs[0].set_ylabel(r'$\sigma_{ext}/A_{geo}$')
-axs[0].set_ylabel(r'$\sigma_{scat}/A_{geo}$')
-axs[0].set_ylabel(r'$\sigma_{abs}/A_{geo}$')
+axs[1].set_ylabel(r'$\sigma_{scat}/A_{geo}$')
+axs[2].set_ylabel(r'$\sigma_{abs}/A_{geo}$')
 
 plt.show()
