@@ -42,11 +42,13 @@ class Mie():
 
         return psi,dpsi,xi,dxi
 
-    def dinter(self):
+    def dinter(self,rs):
             script_dir = Path(__file__).parent
-            mat_path = script_dir / 'rs=4.mat'
+            if rs == 2:
+                mat_path = script_dir / 'rs=2.mat'
+            if rs == 4:
+                mat_path = script_dir / 'rs=4.mat'
 
-            rs = 4
             omegap = rs**(-1.5)*47.1552
             
             data = scipy.io.loadmat(mat_path)
@@ -92,7 +94,7 @@ class Mie():
     
         return a,b
     
-    def Qa_b(self,R,em): # Mie scattering coefficients for surface response approximation
+    def Qa_b(self,R,em,fd): # Mie scattering coefficients for surface response approximation
 
         ed = self.epsout
 
@@ -101,7 +103,14 @@ class Mie():
         km = self.omega/Mie.hc*np.sqrt(em)
         xm = km*R
 
-        dorth = self.dinter()
+        if fd == 'dp':
+            dorth = 0.4
+        if fd == 'dm':
+            dorth = -0.4
+        if fd == 'Ag':
+            dorth = self.dinter(4)
+        if fd == 'Na':
+            dorth = self.dinter(2)
         dpar = 0
 
         lstop = self.lmax
@@ -170,7 +179,7 @@ class Mie():
     
         return c,d
 
-    def Qc_d(self,R,em): # Mie scattering coefficients for surface response approximation
+    def Qc_d(self,R,em,fd): # Mie scattering coefficients for surface response approximation
 
         ed = self.epsout
 
@@ -212,12 +221,12 @@ class Mie():
     
         return c,d
 
-    def single_sphere(self,R,epsin): # T matrix for a single sphere
+    def single_sphere(self,R,epsin,fd): # T matrix for a single sphere
 
         if self.physics == 'C':
             a,b=self.a_b(R,epsin) # mie coefficients dependent on radius R
         if self.physics == 'Q':
-            a,b=self.Qa_b(R,epsin)
+            a,b=self.Qa_b(R,epsin,fd)
         # The single sphere T-matrix is a diagonal matrix made on of the Mie coefficients with a negative sign
         lstop = np.size(a,1)
         Nomega = np.size(a,0)
@@ -236,13 +245,13 @@ class Mie():
                 idx+=2 # accounts for polarization
         return T
     
-    def transmission_matrix(self,R,epsin): # T matrix for transmission of a single sphere
+    def transmission_matrix(self,R,epsin,fd): # T matrix for transmission of a single sphere
         # same as for scattering except now it is c and d coefficients and no negative sign since it doesnt reverse direction as scattering
         
         if self.physics == 'C':
             c,d = self.c_d(R,epsin) # mie coefficients dependent on radius R
         if self.physics == 'Q':
-            c,d = self.Qc_d(R,epsin)
+            c,d = self.Qc_d(R,epsin,fd)
         lstop = np.size(c,1)
         Nomega = np.size(c,0)
 
@@ -257,7 +266,7 @@ class Mie():
                 idx+=2 # accounts for polarization
         return T
     
-    def multi_sphere(self,Rs,pos,epsin): # multiple sphere T-matrix, following the derivation of Brian Stout(2002)
+    def multi_sphere(self,Rs,pos,epsin,fd): # multiple sphere T-matrix, following the derivation of Brian Stout(2002)
         # multi sphere T-matrix is a concatenated matrix of T-matrices T(i,j) each holding the contribution of sphere j to the scattered field of sphere i
         ks = self.omega/self.hc*np.sqrt(self.epsout) # k-vectors. Using epsout since we are looking at scattered fields
         Nomega = np.size(self.omega) # number of omegas
@@ -275,9 +284,9 @@ class Mie():
                 row_start, row_end = i * lmodes, (i + 1) * lmodes # Defines the (i,j) part of the Tmatrix
                 col_start, col_end = j * lmodes, (j + 1) * lmodes
                 if Nomega == 1:
-                    T1 = self.single_sphere(Rs[j],epsin[j]) # each column holds T1(j)
+                    T1 = self.single_sphere(Rs[j],epsin[j],fd[j]) # each column holds T1(j)
                 else:
-                    T1 = self.single_sphere(Rs[j],epsin[j,:]) # each column holds T1(j)
+                    T1 = self.single_sphere(Rs[j],epsin[j,:],fd[j]) # each column holds T1(j)
                 if i == j:
                     Tdiag[:,row_start:row_end,col_start:col_end] = T1 # to create diagonal T-matrix
                     for w in range(Nomega):
@@ -333,7 +342,7 @@ class Mie():
             p[w,:] = T_scat[w,:,:] @ a_inc_i[w,:] # found by multiplying total T-matrix with translated incident field
         return p
 
-    def transmission_coeffs(self,Rs,pos,epsin,a_inc,T):
+    def transmission_coeffs(self,Rs,pos,epsin,fd,a_inc,T):
         N = np.size(Rs)
 
         Tsize = np.size(a_inc,1)
@@ -353,9 +362,9 @@ class Mie():
                 start, end = i * lmodes, (i + 1) * lmodes
 
                 if Nomega == 1:
-                    Tdiag[:,start:end,start:end] = self.transmission_matrix(Rs[i],epsin[i])
+                    Tdiag[:,start:end,start:end] = self.transmission_matrix(Rs[i],epsin[i],fd[i])
                 else:
-                    Tdiag[:,start:end,start:end] = self.transmission_matrix(Rs[i],epsin[i,:])
+                    Tdiag[:,start:end,start:end] = self.transmission_matrix(Rs[i],epsin[i,:],fd[i])
             
                 if N == 1:
                     rj0_xyz = np.array([pos[0],pos[1],pos[2]])
@@ -376,7 +385,7 @@ class Mie():
             p[w,:] = T_trans[w,:,:] @ a_inc_i[w,:]
         return p
 
-    def C_ext(self,a_inc,Rs,pos,epsin):
+    def C_ext(self,a_inc,Rs,pos,epsin,fd):
         ks = self.omega/self.hc*np.sqrt(self.epsout) # k-vectors
         Nomega = np.size(self.omega) #
         N = np.size(Rs) # number of scatterers
@@ -387,10 +396,10 @@ class Mie():
         C = np.zeros(Nomega)
 
         if N == 1:
-            T = self.single_sphere(Rs,epsin)
+            T = self.single_sphere(Rs,epsin,fd)
             C = -2*np.pi/(ks**2)*np.trace(np.real(T),axis1=1,axis2=2)
         else:
-            T,Tdiag = self.multi_sphere(Rs,pos,epsin)
+            T,Tdiag = self.multi_sphere(Rs,pos,epsin,fd)
             
             T_scat = np.zeros_like(T,dtype=np.complex128)
             for w in range(Nomega):
@@ -421,7 +430,7 @@ class Mie():
                     C[w] += -1/(ks[w]**2)*Ci
         return C
     
-    def C_scat(self,a_inc,Rs,pos,epsin):
+    def C_scat(self,a_inc,Rs,pos,epsin,fd):
         ks = self.omega/self.hc*np.sqrt(self.epsout) # k-vectors
         Nomega = np.size(self.omega) #
         N = np.size(Rs) # number of scatterers
@@ -429,7 +438,7 @@ class Mie():
 
         lmodes = 2*(lstop**2+2*lstop) # number of modes with polarization
 
-        T,Tdiag = self.multi_sphere(Rs,pos,epsin)
+        T,Tdiag = self.multi_sphere(Rs,pos,epsin,fd)
         p = self.scattering_coeffs(Rs,pos,a_inc,T,Tdiag)
         C = np.zeros(Nomega)
 
@@ -554,13 +563,13 @@ class Mie():
         return M,N
     
 
-    def Efields(self,x,y,z,a_inc,Rs,pos,epsin):
+    def Efields(self,x,y,z,a_inc,Rs,pos,epsin,fd):
         N = np.size(Rs)
 
-        T,Tdiag = self.multi_sphere(Rs,pos,epsin) # inputs for a_scat and a_in
+        T,Tdiag = self.multi_sphere(Rs,pos,epsin,fd) # inputs for a_scat and a_in
 
         a_scat = self.scattering_coeffs(Rs,pos,a_inc,T,Tdiag) # Scattering coefficients
-        a_in = self.transmission_coeffs(Rs,pos,epsin,a_inc,T) # Field coefficients inside the spheres
+        a_in = self.transmission_coeffs(Rs,pos,epsin,fd,a_inc,T) # Field coefficients inside the spheres
         kout = self.omega/Mie.hc*np.sqrt(self.epsout) # k-vectors outside spheres
         kins = self.omega/Mie.hc*np.sqrt(epsin) # k-vectors inside
 
