@@ -14,8 +14,8 @@ epsinf = 1
 epsout = 1
 E0 = 1
 
-mode = 'Q'
-lmax = 11
+mode = 'C'
+lmax = 8
 Nomega = 400
 R = 16
 gap = 3
@@ -26,7 +26,7 @@ gamma1 = 0.1 #eV
 omega_p2 = 4 #eV
 gamma2 = 0.1 #eV
 
-fd = ['dm','dm']
+fd = ['dm','dp']
 
 omega = np.linspace(0.25*omega_p1,omega_p1*0.75,Nomega)
 
