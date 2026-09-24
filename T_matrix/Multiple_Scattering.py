@@ -16,6 +16,7 @@ class Mie():
         self.epsout = epsout
         self.lmax = lmax
         self.physics = physics
+        #self.Nskip = Nskip
         self.a,self.b,self.alpps,self.blpps = abcoeff(lmax)
     
     def jl(l,rho,der=False): #makes it easier to call spherical bessel function
@@ -42,7 +43,7 @@ class Mie():
 
         return psi,dpsi,xi,dxi
 
-    def dinter(self,rs):
+    def dintermat(self,rs):
             script_dir = Path(__file__).parent
             if rs == 2:
                 mat_path = script_dir / 'rs=2.mat'
@@ -59,6 +60,10 @@ class Mie():
             cs = CubicSpline(omegadat, d)
             return cs(self.omega)
 
+    def dinter(self,omegadata,data):
+                cs = CubicSpline(omegadata, data)
+                return cs(self.omega)
+    
     def a_b(self,R,em): # Mie scattering coefficients vectorized Bohren Hoffman eq. (4.56,4.57)
         ed = self.epsout
 
@@ -108,9 +113,17 @@ class Mie():
         if fd == 'dm':
             dorth = -0.4
         if fd == 'Ag':
-            dorth = self.dinter(4)
+            omegadata, dAgR, dAgI = np.loadtxt(fr'T_matrix\AgFeibelmanParams.txt', unpack=True)
+            dAg = dAgR + 1j*dAgI
+            #dorth = dAg[::self.Nskip]
+            dorth = self.dinter(omegadata,dAg)
+            #dorth = self.dinter(4)
         if fd == 'Na':
-            dorth = self.dinter(2)
+            omegadata, dNaR, dNaI = np.loadtxt(fr'T_matrix\NaFeibelmanParams.txt', unpack=True)
+            dNa = dNaR + 1j*dNaI
+            #dorth= dNa[::self.Nskip]
+            dorth = self.dinter(omegadata,dNa)
+            #dorth = self.dinter(2)
         dpar = 0
 
         lstop = self.lmax
@@ -300,10 +313,55 @@ class Mie():
                         T[w,row_start:row_end,col_start:col_end] = - Cij3[w,:,:] @ T1[w,:,:] # off diagonal elemts of tmatrix to be inverted see Brian Stout(2002) eq. (10)
 
         
+    def multi_sphere(self,Rs,pos,epsin,fd): # multiple sphere T-matrix, following the derivation of Brian Stout(2002)
+        # multi sphere T-matrix is a concatenated matrix of T-matrices T(i,j) each holding the contribution of sphere j to the scattered field of sphere i
+        ks = self.omega/self.hc*np.sqrt(self.epsout) # k-vectors. Using epsout since we are looking at scattered fields
+        Nomega = np.size(self.omega) # number of omegas
+        N = np.size(Rs) # number of scatterers
+        
+        lstop = self.lmax
+        lmodes = 2*(lstop**2+2*lstop) # number of modes with polarization
+        
+        Tsize = N*lmodes # Total size of Tmatrix
+        
+        T = np.zeros((Nomega,Tsize,Tsize),dtype = np.complex128) # structure of final 
+        Tdiag = np.zeros((Nomega,Tsize,Tsize),dtype = np.complex128) # T-matrix with single scatterer T-matrices on diagonal
+        for i in range(N):
+            for j in range(N):
+                row_start, row_end = i * lmodes, (i + 1) * lmodes # Defines the (i,j) part of the Tmatrix
+                col_start, col_end = j * lmodes, (j + 1) * lmodes
+                if Nomega == 1:
+                    T1 = self.single_sphere(Rs[j],epsin[j],fd[j]) # each column holds T1(j)
+                else:
+                    T1 = self.single_sphere(Rs[j],epsin[j,:],fd[j]) # each column holds T1(j)
+                if i == j:
+                    Tdiag[:,row_start:row_end,col_start:col_end] = T1 # to create diagonal T-matrix
+                    for w in range(Nomega):
+                        T[w,row_start:row_end,col_start:col_end] = np.identity(lmodes) # diagonals are just identity matrices
+                else:
+                    rij_xyz = np.array([pos[i,0]-pos[j,0],pos[i,1]-pos[j,1],pos[i,2]-pos[j,2]]) # position vector from scatterer j to i
+                    rij = cart2sph(rij_xyz[0],rij_xyz[1],rij_xyz[2]) # transforms to spherical coordinates
+                    Cij3 = Cmatrix_chew(lstop,rij,ks,3,self.a,self.b,self.alpps,self.blpps) # translation of scattered fields is done with hankel functions therefore the "3"
+                    #Cij3 = Cmatrix(lmax,rij,ks,3) # Translation matrix from Brian Stout
+                    for w in range(Nomega):
+                        T[w,row_start:row_end,col_start:col_end] = - Cij3[w,:,:] @ T1[w,:,:] # off diagonal elemts of tmatrix to be inverted see Brian Stout(2002) eq. (10)
+
+        # Diagonal similarity scaling S^-1 (I - CT) S with s_l = |h_l(k R_i)|, so all entries are O(1)
+        ks_arr = np.atleast_1d(ks)
+        ls = np.concatenate([[l]*2*(2*l+1) for l in range(1, lstop+1)])  # l of each mode (l -> m -> pol)
         for w in range(Nomega):
-            T[w,:,:] = inv(T[w,:,:]) # inversion of Tmatrix
+            s = np.concatenate([np.abs(spherical_jn(ls, ks_arr[w]*Rj) + 1j*spherical_yn(ls, ks_arr[w]*Rj))
+                                for Rj in np.atleast_1d(Rs)])
+            Mt = T[w,:,:]*s[None,:]/s[:,None]            # scaled system matrix
+            T[w,:,:] = s[:,None]*inv(Mt)/s[None,:]       # = (I - CT)^-1, as before
             # this gives the T-matrix as in Brian Stout (2002) or in my Masters Thesis_notes eq. (2.173)
-        return T,Tdiag # returns diagonal T-matrix for future use. a,b,alpps,blpps also for further use to avoid having to calculate twice
+        return T,Tdiag # returns diagonal T-matrix for future use
+
+        
+        #for w in range(Nomega):
+        #    T[w,:,:] = inv(T[w,:,:]) # inversion of Tmatrix
+        #    # this gives the T-matrix as in Brian Stout (2002) or in my Masters Thesis_notes eq. (2.173)
+        #return T,Tdiag # returns diagonal T-matrix for future use. a,b,alpps,blpps also for further use to avoid having to calculate twice
 
     def scattering_coeffs(self,Rs,pos,a_inc,T,Tdiag):
         # For calculating scattering coefficients
