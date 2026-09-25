@@ -15,42 +15,37 @@ epsout = 1
 E0 = 1
 
 mode = 'Q'
-lmax = 5
+lmax = 15
 res = 200
-R = 20
-gap = 5
+Rs = [16, 16]
+gap = 3
 
-omega_p1 = 5.9 #eV
+omega_p1 = 4 #eV
 gamma1 = 0.1 #eV
 
-omega_p2 = 5.9 #eV
+omega_p2 = 4 #eV
 gamma2 = 0.1 #eV
 
-omega = 0.5*omega_p1
+omega = 1.85
 
-d = 2*R+gap
-d3 = np.sqrt(d**2-(d/2)**2)
+fd = ['dm','dp']
+
+#omega = np.linspace(0.25*omega_p1,omega_p1*0.75,Nomega)
+
+d = Rs[0]+Rs[1]+gap
+#d3 = np.sqrt(d**2-(d/2)**2)
 pos = np.array([[-d/2,0,0],[d/2,0,0]]) # dimer
 #pos = np.array([[0,0,-d/2],[0,0,d/2]]) # dimer perpendicular
 #pos = np.array([[-d/2,0,0],[d/2,0,0],[0,0,d3]]) # trimer
 #pos = np.array([[-3*d/2,0,0],[-d/2,0,0],[d/2,0,0],[3*d/2,0,0]]) # chain
-""" pos = np.array([[-d/2,0,0],[d/2,0,0],
-                [0,0,d3],[-d,0,d3],[d,0,d3],
-                [-d/2,0,2*d3],[d/2,0,2*d3],
-                [0,0,-d3],[-d,0,-d3],[d,0,-d3],
-                [0,0,3*d3],[-d,0,3*d3],[d,0,3*d3]
-                ]) # hexagon with one in the middle """
 N = np.size(pos[:,0])
-
-Rs = np.ones_like(pos[:,0])
-Rs = Rs*R
 
 epsin1 = Drude(omega,epsinf,omega_p1,gamma1)
 epsin2 = Drude(omega,epsinf,omega_p2,gamma2)
 
-epsin = np.array([epsin1,epsin2])
-
 mie = Mie(omega,epsout,lmax,mode)
+
+epsin = np.array([epsin1,epsin2])
 
 xmin = 0
 xmax = 0
@@ -74,17 +69,21 @@ Y = np.zeros_like(X)
 
 a_inc = mie.plane_wave(E0,N)
 
-E = mie.Efields(X,Y,Z,a_inc,Rs,pos,epsin)
+E = mie.Efields(X,Y,Z,a_inc,Rs,pos,epsin,fd)
 
 E_abs = np.sqrt(np.sum(np.abs(E)**2, axis=0))
 
 plt.figure()
-plt.pcolor(Z,X,E_abs)
+plt.pcolor(X,Z,E_abs)
 plt.set_cmap('turbo')
 plt.colorbar()
 for i in range(N):
-    circle1 = plt.Circle((pos[i,2], pos[i,0]), Rs[i], color='white', fill=False, linewidth=1)
+    circle1 = plt.Circle((pos[i,0], pos[i,2]), Rs[i], color='blue', fill=True, linewidth=1)
     plt.gca().add_patch(circle1)
 plt.xlabel("z")
 plt.ylabel("x")
 plt.show()
+
+np.savetxt(fr'T_matrix\nearfield_data\dimer_{mode}_{fd[0]}{fd[1]}_kx_Ez_X_omega{omega}_R1{Rs[0]}R2{Rs[1]}nm_dg{gap}nm_l{lmax}_res{res}.txt', X, delimiter='\t', fmt='%.14g')
+np.savetxt(fr'T_matrix\nearfield_data\dimer_{mode}_{fd[0]}{fd[1]}kx_Ez_Z_omega{omega}_R1{Rs[0]}R2{Rs[1]}nm_dg{gap}nm_l{lmax}_res{res}.txt', Z, delimiter='\t', fmt='%.14g')
+np.savetxt(fr'T_matrix\nearfield_data\dimer_{mode}_{fd[0]}{fd[1]}kx_Ez_E_omega{omega}_R1{Rs[0]}R2{Rs[1]}nm_dg{gap}nm_l{lmax}_res{res}.txt', Z, delimiter='\t', fmt='%.14g')

@@ -1,11 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-lmax=10
+lmax=11
 mode = 'Q_dmdp'
 
 plt.figure()
-for i in range(2):
+for i in range(1):
         
     omega, Cext = np.loadtxt(fr'T_matrix\data\dimer_{mode}_kx_Ez_Qs_wp4.0eV_gamma0.1eV_epsb1_R16nm_dg3nm_l{lmax}.txt', unpack=True)
     

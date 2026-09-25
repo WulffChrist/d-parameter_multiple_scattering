@@ -201,7 +201,22 @@ class Mie():
         km = self.omega/Mie.hc*np.sqrt(em)
         xm = km*R
 
-        dorth = self.dinter()
+        if fd == 'dp':
+            dorth = 0.4
+        if fd == 'dm':
+            dorth = -0.4
+        if fd == 'Ag':
+            omegadata, dAgR, dAgI = np.loadtxt(fr'T_matrix\AgFeibelmanParams.txt', unpack=True)
+            dAg = dAgR + 1j*dAgI
+            #dorth = dAg[::self.Nskip]
+            dorth = self.dinter(omegadata,dAg)
+            #dorth = self.dinter(4)
+        if fd == 'Na':
+            omegadata, dNaR, dNaI = np.loadtxt(fr'T_matrix\NaFeibelmanParams.txt', unpack=True)
+            dNa = dNaR + 1j*dNaI
+            #dorth= dNa[::self.Nskip]
+            dorth = self.dinter(omegadata,dNa)
+            #dorth = self.dinter(2)
         dpar = 0
 
         lstop = self.lmax
@@ -278,40 +293,6 @@ class Mie():
                 T[:,idx+1,idx+1]=d[:,l-1]
                 idx+=2 # accounts for polarization
         return T
-    
-    def multi_sphere(self,Rs,pos,epsin,fd): # multiple sphere T-matrix, following the derivation of Brian Stout(2002)
-        # multi sphere T-matrix is a concatenated matrix of T-matrices T(i,j) each holding the contribution of sphere j to the scattered field of sphere i
-        ks = self.omega/self.hc*np.sqrt(self.epsout) # k-vectors. Using epsout since we are looking at scattered fields
-        Nomega = np.size(self.omega) # number of omegas
-        N = np.size(Rs) # number of scatterers
-        
-        lstop = self.lmax
-        lmodes = 2*(lstop**2+2*lstop) # number of modes with polarization
-        
-        Tsize = N*lmodes # Total size of Tmatrix
-        
-        T = np.zeros((Nomega,Tsize,Tsize),dtype = np.complex128) # structure of final 
-        Tdiag = np.zeros((Nomega,Tsize,Tsize),dtype = np.complex128) # T-matrix with single scatterer T-matrices on diagonal
-        for i in range(N):
-            for j in range(N):
-                row_start, row_end = i * lmodes, (i + 1) * lmodes # Defines the (i,j) part of the Tmatrix
-                col_start, col_end = j * lmodes, (j + 1) * lmodes
-                if Nomega == 1:
-                    T1 = self.single_sphere(Rs[j],epsin[j],fd[j]) # each column holds T1(j)
-                else:
-                    T1 = self.single_sphere(Rs[j],epsin[j,:],fd[j]) # each column holds T1(j)
-                if i == j:
-                    Tdiag[:,row_start:row_end,col_start:col_end] = T1 # to create diagonal T-matrix
-                    for w in range(Nomega):
-                        T[w,row_start:row_end,col_start:col_end] = np.identity(lmodes) # diagonals are just identity matrices
-                else:
-                    rij_xyz = np.array([pos[i,0]-pos[j,0],pos[i,1]-pos[j,1],pos[i,2]-pos[j,2]]) # position vector from scatterer j to i
-                    rij = cart2sph(rij_xyz[0],rij_xyz[1],rij_xyz[2]) # transforms to spherical coordinates
-                    Cij3 = Cmatrix_chew(lstop,rij,ks,3,self.a,self.b,self.alpps,self.blpps) # translation of scattered fields is done with hankel functions therefore the "3"
-                    #Cij3 = Cmatrix(lmax,rij,ks,3) # Translation matrix from Brian Stout
-                    for w in range(Nomega):
-                        T[w,row_start:row_end,col_start:col_end] = - Cij3[w,:,:] @ T1[w,:,:] # off diagonal elemts of tmatrix to be inverted see Brian Stout(2002) eq. (10)
-
         
     def multi_sphere(self,Rs,pos,epsin,fd): # multiple sphere T-matrix, following the derivation of Brian Stout(2002)
         # multi sphere T-matrix is a concatenated matrix of T-matrices T(i,j) each holding the contribution of sphere j to the scattered field of sphere i
